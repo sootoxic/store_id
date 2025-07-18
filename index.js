@@ -1,6 +1,6 @@
 const { 
   Client, GatewayIntentBits, Partials, REST, Routes, 
-  SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle 
+  SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder 
 } = require('discord.js');
 require('dotenv').config();
 const fs = require('fs');
@@ -131,27 +131,16 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: `📭 لا يوجد أرقام في قسم ${type}`, flags: 64 });
     }
     const list = data[type];
+    const fileContent = list.map((n, i) => `${i + 1}. ${n}`).join('\n');
+    const fileName = `${type.replace(/ /g, '_')}.txt`;
+    fs.writeFileSync(fileName, fileContent);
+    const file = new AttachmentBuilder(fileName);
 
-    // إذا أكثر من 100 → أرسل ملف .txt
-    if (list.length > 100) {
-      const fileContent = list.map((n, i) => `${i + 1}. ${n}`).join('\n');
-      const fileName = `${type.replace(/ /g, '_')}.txt`;
-      fs.writeFileSync(fileName, fileContent);
-      const attachment = new AttachmentBuilder(fileName);
-      try {
-        await interaction.user.send({ content: `📁 قائمة ${type}:`, files: [attachment] });
-        return interaction.reply({ content: '📨 تم إرسال القائمة في الخاص كملف.', flags: 64 });
-      } catch {
-        return interaction.reply({ content: '❌ لا يمكن إرسال رسالة خاصة لك. تأكد من فتح الخاص.', flags: 64 });
-      }
-    } else {
-      const msg = `📦 **${type}**:\n` + list.map((n, i) => `${i + 1}. ${n}`).join('\n');
-      try {
-        await interaction.user.send(msg);
-        return interaction.reply({ content: '📨 تم إرسال القائمة في الخاص.', flags: 64 });
-      } catch {
-        return interaction.reply({ content: '❌ لا يمكن إرسال رسالة خاصة لك. تأكد من فتح الخاص.', flags: 64 });
-      }
+    try {
+      await interaction.user.send({ files: [file] });
+      return interaction.reply({ content: '📨 تم إرسال القائمة في الخاص كملف.', flags: 64 });
+    } catch {
+      return interaction.reply({ content: '❌ لا يمكن إرسال رسالة خاصة لك. تأكد من فتح الخاص.', flags: 64 });
     }
 
   } else if (interaction.commandName === 'إضافة') {
