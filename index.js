@@ -51,6 +51,9 @@ client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
+const data = loadData();
+const categoryChoices = Object.keys(data).map(key => ({ name: key, value: key })).slice(0, 25);
+
 const commands = [
   new SlashCommandBuilder()
     .setName('عرض')
@@ -58,7 +61,8 @@ const commands = [
     .addStringOption(option =>
       option.setName('النوع')
         .setDescription('اختر النوع')
-        .setRequired(true))
+        .setRequired(true)
+        .addChoices(...categoryChoices))
     .toJSON(),
 
   new SlashCommandBuilder()
@@ -67,7 +71,8 @@ const commands = [
     .addStringOption(option =>
       option.setName('النوع')
         .setDescription('اختر القسم')
-        .setRequired(true))
+        .setRequired(true)
+        .addChoices(...categoryChoices))
     .addStringOption(option =>
       option.setName('الرقم')
         .setDescription('الرقم المراد إضافته')
@@ -80,6 +85,24 @@ const commands = [
     .addStringOption(option =>
       option.setName('الرقم')
         .setDescription('الرقم المراد بيعه')
+        .setRequired(true))
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('نقل_الى_تم_بيعه')
+    .setDescription('🔁 نقل رقم من أي فئة إلى تم_بيعه')
+    .addStringOption(option =>
+      option.setName('الرقم')
+        .setDescription('الرقم المراد نقله')
+        .setRequired(true))
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('حذف')
+    .setDescription('❌ حذف رقم من أي فئة بدون تسجيله في تم_بيعه')
+    .addStringOption(option =>
+      option.setName('الرقم')
+        .setDescription('الرقم المراد حذفه')
         .setRequired(true))
     .toJSON()
 ];
@@ -95,45 +118,43 @@ client.on('interactionCreate', async interaction => {
   const hasPermission = allowedRoles.some(r => member.roles.cache.has(r));
 
   if (!hasPermission) {
-    return interaction.reply({ content: '🚫 ليس لديك الصلاحية لاستخدام هذا البوت.', ephemeral: true });
+    return interaction.reply({ content: '🚫 ليس لديك الصلاحية لاستخدام هذا البوت.', flags: 64 });
   }
 
   const data = loadData();
 
-  if (interaction.commandName === 'عرض') {
-    const category = interaction.options.getString('النوع');
-    if (!data[category]) return interaction.reply({ content: '❌ النوع غير معروف.', ephemeral: true });
+  const number = interaction.options.getString('الرقم');
+  const type = interaction.options.getString('النوع');
 
-    if (data[category].length === 0) {
-      return interaction.reply({ content: `📭 لا يوجد أرقام في قسم ${category}`, ephemeral: true });
+  if (interaction.commandName === 'عرض') {
+    if (!data[type]) return interaction.reply({ content: '❌ النوع غير معروف.', flags: 64 });
+    if (data[type].length === 0) {
+      return interaction.reply({ content: `📭 لا يوجد أرقام في قسم ${type}`, flags: 64 });
+    }
+    const list = data[type];
+    const msg = `📦 **${type}**:
+` + list.map((n, i) => `${i + 1}. ${n}`).join('\n');
+    try {
+      await interaction.user.send(msg);
+      return interaction.reply({ content: '📨 تم إرسال القائمة في الخاص.', flags: 64 });
+    } catch {
+      return interaction.reply({ content: '❌ لا يمكن إرسال رسالة خاصة لك. تأكد من فتح الخاص.', flags: 64 });
     }
 
-    const list = data[category];
-    const msg = `📦 ${category}:
-` + list.map((n, i) => `${i + 1}. ${n}`).join('\n');
-    return interaction.reply({ content: msg, ephemeral: true });
-
   } else if (interaction.commandName === 'إضافة') {
-    const type = interaction.options.getString('النوع');
-    const number = interaction.options.getString('الرقم');
-
-    if (!data[type]) return interaction.reply({ content: '❌ النوع غير معروف.', ephemeral: true });
-    if (data[type].includes(Number(number))) return interaction.reply({ content: '⚠️ الرقم موجود مسبقاً.', ephemeral: true });
-
+    if (!data[type]) return interaction.reply({ content: '❌ النوع غير معروف.', flags: 64 });
+    if (data[type].includes(Number(number))) return interaction.reply({ content: '⚠️ الرقم موجود مسبقاً.', flags: 64 });
     data[type].push(Number(number));
     saveData(data);
-    return interaction.reply({ content: `✅ تمت إضافة الرقم ${number} إلى ${type}`, ephemeral: true });
+    return interaction.reply({ content: `✅ تمت إضافة الرقم ${number} إلى ${type}`, flags: 64 });
 
   } else if (interaction.commandName === 'بيع') {
-    const number = Number(interaction.options.getString('الرقم'));
-
     for (let cat of Object.keys(data)) {
-      const index = data[cat]?.indexOf(number);
+      const index = data[cat]?.indexOf(Number(number));
       if (index !== -1) {
         data[cat].splice(index, 1);
-        data['تم_بيعه'].push(number);
+        data['تم_بيعه'].push(Number(number));
         saveData(data);
-
         const btnRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId('sold_ok')
@@ -141,16 +162,35 @@ client.on('interactionCreate', async interaction => {
             .setStyle(ButtonStyle.Success)
             .setDisabled(true)
         );
-
-        await interaction.reply({ content: `✅ تم بيع الرقم ${number}`, components: [btnRow], ephemeral: false });
-
+        await interaction.reply({ content: `✅ تم بيع الرقم ${number}`, components: [btnRow] });
         await notifyStoreManager(interaction.guild, `📢 تم بيع الرقم ${number} بواسطة <@${interaction.user.id}>`);
-
         return;
       }
     }
+    return interaction.reply({ content: '❌ الرقم غير موجود في أي قائمة.', flags: 64 });
 
-    return interaction.reply({ content: '❌ الرقم غير موجود في أي قائمة.', ephemeral: true });
+  } else if (interaction.commandName === 'نقل_الى_تم_بيعه') {
+    for (let cat of Object.keys(data)) {
+      const index = data[cat]?.indexOf(Number(number));
+      if (index !== -1) {
+        data[cat].splice(index, 1);
+        data['تم_بيعه'].push(Number(number));
+        saveData(data);
+        return interaction.reply({ content: `✅ تم نقل الرقم ${number} إلى تم_بيعه.`, flags: 64 });
+      }
+    }
+    return interaction.reply({ content: '❌ الرقم غير موجود.', flags: 64 });
+
+  } else if (interaction.commandName === 'حذف') {
+    for (let cat of Object.keys(data)) {
+      const index = data[cat]?.indexOf(Number(number));
+      if (index !== -1) {
+        data[cat].splice(index, 1);
+        saveData(data);
+        return interaction.reply({ content: `✅ تم حذف الرقم ${number} من قسم ${cat}.`, flags: 64 });
+      }
+    }
+    return interaction.reply({ content: '❌ الرقم غير موجود.', flags: 64 });
   }
 });
 
