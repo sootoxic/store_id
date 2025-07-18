@@ -2,6 +2,7 @@
 {
   "name": "id-store-bot",
   "version": "1.0.0",
+  "description": "Discord bot for managing categorized ID numbers",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
